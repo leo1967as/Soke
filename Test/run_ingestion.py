@@ -15,7 +15,10 @@ from core.ai_support_bot.rag.ingestion import DataIngestionTask
 from core.ai_support_bot.rag.vector_store import VectorStore
 from core.ai_support_bot.ai.openrouter import OpenRouterEngine
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 async def main():
     config = load_config('core/ai_support_bot/.env')

@@ -73,6 +73,7 @@ data/
 chroma_db/
 chromadb/
 vector_store/
+Test/notion_dump.txt
 
 # Service account keys (NEVER commit)
 *service-account*.json

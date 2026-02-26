@@ -18,10 +18,12 @@ async def main():
     pages = fetcher._cached_pages
     
     print(f"Total pages: {len(pages)}")
-    for p in pages:
-        if 'bizzare' in p.title.lower() or 'boss' in p.title.lower() or 'raid' in p.title.lower():
-            print(f"--- {p.title} ({p.id}) ---")
-            print(p.content[:2000])
+    with open('Test/notion_dump.txt', 'w', encoding='utf-8') as f:
+        for p in pages:
+            f.write(f"--- PAGE: {p.title} ({p.id}) ---\n")
+            f.write(p.content)
+            f.write("\n\n")
+    print("Dumped all pages to Test/notion_dump.txt")
 
 if __name__ == "__main__":
     asyncio.run(main())
