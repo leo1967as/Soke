@@ -165,6 +165,57 @@ class OpenRouterEngine:
             logger.warning(f"[HyDE FAIL] {e}")
             return user_question
 
+    async def rewrite_query(self, conversation_history: list[dict[str, str]], current_question: str) -> str:
+        """Rewrite vague follow-up questions into complete standalone queries.
+        
+        Args:
+            conversation_history: Recent chat history [{'role': 'user'/'assistant', 'content': '...'}]
+            current_question: The latest user question
+            
+        Returns:
+            Rewritten query that includes necessary context from conversation history
+        """
+        if len(conversation_history) <= 1:
+            # No prior context, return as-is
+            return current_question
+        
+        # Build conversation context (last 3 turns max)
+        recent_turns = conversation_history[-6:]  # Last 3 Q&A pairs
+        context_lines = []
+        for turn in recent_turns:
+            role = "ลูกค้า" if turn["role"] == "user" else "บอท"
+            context_lines.append(f"{role}: {turn['content'][:100]}")
+        
+        context_str = "\n".join(context_lines)
+        
+        prompt = f"""ประวัติการสนทนา:
+{context_str}
+
+คำถามล่าสุด: {current_question}
+
+งานของคุณ: เขียนคำถามใหม่ให้สมบูรณ์โดยรวมบริบทจากประวัติการสนทนา เพื่อให้สามารถค้นหาข้อมูลได้แม่นยำ
+
+ตัวอย่าง:
+ประวัติ: ลูกค้าถามเรื่องฟาร์มเวล Roblox
+คำถามล่าสุด: "แล้วใช้เวลากี่วันครับ"
+คำถามที่เขียนใหม่: "ฟาร์มเวล Roblox ใช้ระยะเวลากี่วัน"
+
+เขียนเฉพาะคำถามที่เขียนใหม่เท่านั้น ห้ามอธิบาย:"""
+        
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=100,
+            )
+            rewritten = response.choices[0].message.content.strip()
+            logger.info(f"Query rewritten: '{current_question}' → '{rewritten}'")
+            return rewritten
+        except Exception as e:
+            logger.warning(f"Query rewriting failed: {e}, using original")
+            return current_question
+
     async def rerank_context_chunks(self, user_question: str, chunks: list[str], top_n: int = 3) -> list[str]:
         """Cross-Encoder Reranker: Score each chunk 0-10 for relevance and keep top N.
         

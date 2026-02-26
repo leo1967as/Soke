@@ -185,6 +185,14 @@ class SokeberSupportBot(commands.Bot):
         
         if self.context_retriever:
             try:
+                # 0.5. Query rewriting for conversational context
+                rewritten_query = await self.llm.rewrite_query(self.conversation_history[user_id], question)
+                if rewritten_query != question:
+                    logger.info(f"\n🔄 [STEP 0.5] QUERY REWRITING:")
+                    logger.info(f"   Original: {question}")
+                    logger.info(f"   Rewritten: {rewritten_query}")
+                    question = rewritten_query  # Use rewritten query for retrieval
+                
                 # 1. Expand query (HyDE) — only for short/vague questions
                 hyde_cache_key = f"__hyde__{question}"
                 if len(question) < 30:

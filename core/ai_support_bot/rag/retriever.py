@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ai_support_bot.rag.retriever")
 
-MAX_DISTANCE = 0.95
-
+MAX_DISTANCE = 0.55  # Cosine distance threshold (0 = identical, 1 = orthogonal)
+# Tightened from 0.95 to 0.55 for better precision - only retrieve truly relevant chunks
 
 class ContextRetriever:
     """Hybrid retriever with Parent-Child chunk resolution.

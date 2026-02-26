@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger("ai_support_bot.rag.notion")
 
@@ -66,6 +67,16 @@ class NotionFetcher:
             # table_row has 'cells' (list of rich_text arrays)
             cells = [_extract_rich_text(cell) for cell in block_data.get("cells", [])]
             text = " | ".join(cells)
+        elif block_type in ["column_list", "column"]:
+            # Layout blocks (columns) — no direct text, but has children
+            pass
+        elif block_type == "synced_block":
+            # Synced block — extract from synced_from or children
+            synced_from = block_data.get("synced_from")
+            if synced_from and synced_from.get("block_id"):
+                # This is a reference to another block, skip to avoid duplication
+                pass
+            # Otherwise it's the original synced block, process children normally
         elif "rich_text" in block_data:
             text = _extract_rich_text(block_data.get("rich_text", []))
         
@@ -85,14 +96,52 @@ class NotionFetcher:
 
         return "\n".join(lines)
 
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((ConnectionError, TimeoutError)),
+        reraise=True
+    )
     def fetch_page_content(self, page_id: str) -> NotionPage:
-        """Fetch a single page and all its block children as plain text."""
+        """Fetch a single page and all its block children as plain text.
+        
+        Retries up to 5 times with exponential backoff (2s, 4s, 8s) on network errors.
+        """
         page = self._client.pages.retrieve(page_id=page_id)
         title = _extract_title(page)
         url = page.get("url", "")
-
-        blocks = self._fetch_all_blocks(page_id)
+        
+        # 1. Extract properties (database columns)
         content_parts = []
+        properties = page.get("properties", {})
+        for prop_name, prop_data in properties.items():
+            prop_type = prop_data.get("type")
+            prop_value = ""
+            
+            # Skip title (already extracted)
+            if prop_type == "title":
+                continue
+            
+            # Extract based on property type
+            if prop_type == "rich_text":
+                prop_value = _extract_rich_text(prop_data.get("rich_text", []))
+            elif prop_type == "select" and prop_data.get("select"):
+                prop_value = prop_data["select"].get("name", "")
+            elif prop_type == "multi_select":
+                prop_value = ", ".join(item.get("name", "") for item in prop_data.get("multi_select", []))
+            elif prop_type == "number":
+                prop_value = str(prop_data.get("number", ""))
+            elif prop_type == "status" and prop_data.get("status"):
+                prop_value = prop_data["status"].get("name", "")
+            
+            if prop_value.strip():
+                content_parts.append(f"{prop_name}: {prop_value}")
+        
+        # 2. Extract blocks (page content)
+        blocks = self._fetch_all_blocks(page_id)
+        if blocks and content_parts:
+            content_parts.append("\n--- รายละเอียด ---")
+        
         for block in blocks:
             text = self._get_block_text(block)
             if text.strip():

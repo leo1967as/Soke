@@ -158,6 +158,11 @@ class DataIngestionTask:
     async def _rebuild_index(self, texts: list[str], metadatas: list[dict]):
         """Split documents into parent-child chunks and rebuild the index.
         
+        Zero-downtime strategy:
+        1. Build all embeddings in-memory first
+        2. Only reset collection after embeddings are ready
+        3. Atomically insert all data at once
+        
         - Parents: Full documents stored in memory
         - Children: Paragraph-level chunks stored in ChromaDB for precise search
         """
@@ -169,16 +174,15 @@ class DataIngestionTask:
             return
 
         try:
-            await asyncio.to_thread(self.vector_store.reset_collection)
-
+            # Phase 1: Build everything in-memory (no DB writes yet)
+            logger.info("[INGESTION] Phase 1: Building parent-child structure in-memory...")
+            parent_docs = {}  # {parent_id: full_text}
             child_texts = []
             child_metas = []
             
             for i, (full_text, meta) in enumerate(zip(texts, metadatas)):
                 parent_id = f"parent_{i}"
-                
-                # Store the FULL document as a parent (for later retrieval)
-                self.vector_store.add_parent_document(parent_id, full_text)
+                parent_docs[parent_id] = full_text
                 
                 # Split into child chunks (paragraphs)
                 children = self._split_into_children(full_text)
@@ -189,27 +193,34 @@ class DataIngestionTask:
                         **meta,
                         "parent_id": parent_id,
                     })
-            
-            # Persist all parent docs to disk once (not per-document)
-            await asyncio.to_thread(self.vector_store.save_parent_docs)
 
-            # Embed and index all children
+            # Phase 2: Generate all embeddings (still in-memory)
+            logger.info(f"[INGESTION] Phase 2: Generating embeddings for {len(child_texts)} chunks...")
+            all_embeddings = []
             batch_size = 50
             for i in range(0, len(child_texts), batch_size):
                 batch_texts = child_texts[i:i + batch_size]
-                batch_metas = child_metas[i:i + batch_size]
-                if not batch_texts:
-                    continue
-
-                embeddings = await self.embedding_engine.embed(batch_texts)
-                await asyncio.to_thread(
-                    self.vector_store.add_documents,
-                    batch_texts,
-                    embeddings,
-                    batch_metas
-                )
-                await asyncio.sleep(0.01)
+                embeddings = await self.embedding_engine.embed_batch(batch_texts)
+                all_embeddings.extend(embeddings)
+                logger.info(f"Embedded batch {i // batch_size + 1}/{(len(child_texts) + batch_size - 1) // batch_size}")
             
+            # Phase 3: Atomic swap - reset and insert all at once
+            logger.info("[INGESTION] Phase 3: Atomic swap - resetting collection and inserting all data...")
+            await asyncio.to_thread(self.vector_store.reset_collection)
+            
+            # Insert all parent docs
+            for parent_id, full_text in parent_docs.items():
+                self.vector_store.add_parent_document(parent_id, full_text)
+            await asyncio.to_thread(self.vector_store.save_parent_docs)
+            
+            # Insert all child chunks with embeddings
+            await asyncio.to_thread(
+                self.vector_store.add_child_chunks,
+                child_texts,
+                all_embeddings,
+                child_metas
+            )
+            logger.info(f"[INGESTION] Indexed {len(child_texts)} chunks from {len(parent_docs)} documents")           
             logger.info(
                 f"✅ Rebuilt index: {len(texts)} parents → {len(child_texts)} child chunks"
             )

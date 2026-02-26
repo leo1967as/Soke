@@ -144,6 +144,49 @@ class SheetsFetcher:
         
         return rows
 
+    def fetch_sheet_as_markdown_table(self, spreadsheet_id: str, sheet_name: str, range_notation: str = "") -> str:
+        """Fetch a sheet and convert to Markdown table format.
+        
+        Returns entire sheet as a single Markdown table string for better LLM understanding.
+        Ideal for pricing tables, comparison charts, or structured data.
+        """
+        service = self._get_service()
+        full_range = f"{sheet_name}!{range_notation}" if range_notation else sheet_name
+
+        try:
+            result = (
+                service.spreadsheets()
+                .values()
+                .get(spreadsheetId=spreadsheet_id, range=full_range)
+                .execute()
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch sheet '{sheet_name}': {e}")
+            return ""
+
+        values = result.get("values", [])
+        if not values or len(values) < 2:  # Need at least header + 1 row
+            return ""
+
+        # Build Markdown table
+        headers = values[0]
+        lines = []
+        
+        # Header row
+        lines.append("| " + " | ".join(str(h) for h in headers) + " |")
+        # Separator row
+        lines.append("|" + "|".join(["---"] * len(headers)) + "|")
+        
+        # Data rows
+        for row_data in values[1:]:
+            # Pad row to match headers length
+            padded = row_data + [""] * (len(headers) - len(row_data))
+            lines.append("| " + " | ".join(str(v) for v in padded) + " |")
+        
+        markdown_table = "\n".join(lines)
+        logger.info(f"Converted sheet '{sheet_name}' to Markdown table ({len(values)-1} rows)")
+        return markdown_table
+
     def fetch_all_rows(self, spreadsheet_id: str, sheet_names: list[str]) -> list[SheetRow]:
         """Fetch rows from multiple sheets."""
         all_rows: list[SheetRow] = []

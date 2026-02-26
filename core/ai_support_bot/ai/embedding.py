@@ -43,3 +43,14 @@ class EmbeddingEngine:
         except Exception as e:
             logger.error(f"Failed to generate embeddings: {e}")
             raise
+    
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Alias for embed() - batch embed multiple texts.
+        
+        Args:
+            texts: List of text strings to embed.
+            
+        Returns:
+            List of embedding vectors (list of floats).
+        """
+        return await self.embed(texts)
