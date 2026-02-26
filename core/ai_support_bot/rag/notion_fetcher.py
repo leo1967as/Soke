@@ -18,23 +18,11 @@ class NotionPage:
     last_edited_time: str = ""
 
 
-def _extract_text_from_block(block: dict) -> str:
-    """Extract plain text from a single Notion block."""
-    block_type = block.get("type", "")
-    block_data = block.get(block_type, {})
-
-    # Handle to_do blocks (must be before generic rich_text)
-    if block_type == "to_do":
-        checked = "✅" if block_data.get("checked") else "☐"
-        text = "".join(rt.get("plain_text", "") for rt in block_data.get("rich_text", []))
-        return f"{checked} {text}"
-
-    # Handle rich_text arrays (paragraph, heading, bulleted_list_item, etc.)
-    rich_text_list = block_data.get("rich_text", [])
-    if rich_text_list:
-        return "".join(rt.get("plain_text", "") for rt in rich_text_list)
-
-    return ""
+def _extract_rich_text(rich_text_list: list[dict]) -> str:
+    """Helper to extract plain text from rich_text array."""
+    if not rich_text_list:
+        return ""
+    return "".join(rt.get("plain_text", "") for rt in rich_text_list)
 
 
 def _extract_title(page: dict) -> str:
@@ -43,21 +31,59 @@ def _extract_title(page: dict) -> str:
     for prop in properties.values():
         if prop.get("type") == "title":
             title_arr = prop.get("title", [])
-            return "".join(t.get("plain_text", "") for t in title_arr)
+            return _extract_rich_text(title_arr)
     return "Untitled"
 
 
 class NotionFetcher:
-    """Fetches pages from Notion and converts to plain text.
-
-    Args:
-        notion_client: An initialized notion_client.Client instance.
-    """
+    """Fetches pages from Notion and converts to plain text."""
 
     def __init__(self, client):
         """Initialize with a Notion client."""
         self._client = client
         self._cached_pages = []
+
+    def _get_block_text(self, block: dict, depth: int = 0) -> str:
+        """Extract plain text from a block and its children recursively."""
+        block_type = block.get("type", "")
+        block_data = block.get(block_type, {})
+        indent = "  " * depth
+        lines = []
+
+        # 1. Extract text from current block
+        text = ""
+        if block_type == "to_do":
+            checked = "✅" if block_data.get("checked") else "☐"
+            text = f"{checked} {_extract_rich_text(block_data.get('rich_text', []))}"
+        elif block_type == "callout":
+            emoji = block_data.get("icon", {}).get("emoji", "💡")
+            text = f"{emoji} {_extract_rich_text(block_data.get('rich_text', []))}"
+        elif block_type == "quote":
+            text = f"> {_extract_rich_text(block_data.get('rich_text', []))}"
+        elif block_type == "toggle":
+            text = f"▼ {_extract_rich_text(block_data.get('rich_text', []))}"
+        elif block_type == "table_row":
+            # table_row has 'cells' (list of rich_text arrays)
+            cells = [_extract_rich_text(cell) for cell in block_data.get("cells", [])]
+            text = " | ".join(cells)
+        elif "rich_text" in block_data:
+            text = _extract_rich_text(block_data.get("rich_text", []))
+        
+        if text.strip():
+            lines.append(f"{indent}{text}")
+
+        # 2. Extract children if any (recursion)
+        if block.get("has_children"):
+            # Exclude child_page/child_database from recursion inside page content
+            # (they are handled by the tree crawler separately)
+            if block_type not in ["child_page", "child_database"]:
+                children = self._fetch_all_blocks(block["id"])
+                for child in children:
+                    child_text = self._get_block_text(child, depth + 1)
+                    if child_text.strip():
+                        lines.append(child_text)
+
+        return "\n".join(lines)
 
     def fetch_page_content(self, page_id: str) -> NotionPage:
         """Fetch a single page and all its block children as plain text."""
@@ -66,13 +92,13 @@ class NotionFetcher:
         url = page.get("url", "")
 
         blocks = self._fetch_all_blocks(page_id)
-        lines = []
+        content_parts = []
         for block in blocks:
-            text = _extract_text_from_block(block)
+            text = self._get_block_text(block)
             if text.strip():
-                lines.append(text)
+                content_parts.append(text)
 
-        content = "\n".join(lines)
+        content = "\n".join(content_parts)
         logger.info(f"Fetched Notion page '{title}' ({len(content)} chars)")
         return NotionPage(id=page_id, title=title, content=content, url=url)
 

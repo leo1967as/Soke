@@ -149,7 +149,11 @@ class DataIngestionTask:
         return texts, metas
 
     async def _rebuild_index(self, texts: list[str], metadatas: list[dict]):
-        """Embed texts and rebuild the ChromaDB vector index."""
+        """Split documents into parent-child chunks and rebuild the index.
+        
+        - Parents: Full documents stored in memory
+        - Children: Paragraph-level chunks stored in ChromaDB for precise search
+        """
         if not texts:
             logger.warning("No documents to index.")
             return
@@ -160,10 +164,30 @@ class DataIngestionTask:
         try:
             await asyncio.to_thread(self.vector_store.reset_collection)
 
+            child_texts = []
+            child_metas = []
+            
+            for i, (full_text, meta) in enumerate(zip(texts, metadatas)):
+                parent_id = f"parent_{i}"
+                
+                # Store the FULL document as a parent (for later retrieval)
+                self.vector_store.add_parent_document(parent_id, full_text)
+                
+                # Split into child chunks (paragraphs)
+                children = self._split_into_children(full_text)
+                
+                for child_text in children:
+                    child_texts.append(child_text)
+                    child_metas.append({
+                        **meta,
+                        "parent_id": parent_id,
+                    })
+            
+            # Embed and index all children
             batch_size = 50
-            for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
-                batch_metas = metadatas[i:i + batch_size]
+            for i in range(0, len(child_texts), batch_size):
+                batch_texts = child_texts[i:i + batch_size]
+                batch_metas = child_metas[i:i + batch_size]
                 if not batch_texts:
                     continue
 
@@ -175,9 +199,78 @@ class DataIngestionTask:
                     batch_metas
                 )
                 await asyncio.sleep(0.01)
-            logger.info(f"✅ Rebuilt vector index with {len(texts)} documents.")
+            
+            logger.info(
+                f"✅ Rebuilt index: {len(texts)} parents → {len(child_texts)} child chunks"
+            )
         except Exception as e:
             logger.error(f"Failed to rebuild vector index: {e}")
+
+    @staticmethod
+    def _split_into_children(text: str, min_length: int = 50, max_chunk: int = 400) -> list[str]:
+        """Split a document into section-level child chunks.
+        
+        Strategy for Notion content:
+        - Split by section headers (###, ---) or double newlines
+        - If that doesn't work, split by single newlines and group into ~400 char chunks
+        - Each child is a meaningful searchable unit
+        """
+        import re
+        
+        if len(text) < 150:
+            return [text]
+        
+        # Strategy 1: Split by section headers / horizontal rules
+        sections = re.split(r'\n(?=###\s)|(?:\n---\n)', text)
+        
+        if len(sections) > 1:
+            # Good — we got meaningful section splits
+            children = []
+            for sec in sections:
+                sec = sec.strip()
+                if len(sec) >= min_length:
+                    children.append(sec)
+            if children:
+                return children
+        
+        # Strategy 2: Split by double newlines (paragraphs)
+        paras = text.split("\n\n")
+        if len(paras) > 1:
+            children = []
+            buffer = ""
+            for p in paras:
+                p = p.strip()
+                if not p:
+                    continue
+                if len(buffer) + len(p) < max_chunk:
+                    buffer += ("\n\n" + p) if buffer else p
+                else:
+                    if buffer:
+                        children.append(buffer)
+                    buffer = p
+            if buffer and len(buffer) >= min_length:
+                children.append(buffer)
+            if children:
+                return children
+        
+        # Strategy 3: Split by single newlines into groups
+        lines = text.split("\n")
+        children = []
+        buffer = ""
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if len(buffer) + len(line) < max_chunk:
+                buffer += ("\n" + line) if buffer else line
+            else:
+                if buffer and len(buffer) >= min_length:
+                    children.append(buffer)
+                buffer = line
+        if buffer and len(buffer) >= min_length:
+            children.append(buffer)
+        
+        return children if children else [text]
 
     # ─── Public sync methods ──────────────────────────────────────────
 

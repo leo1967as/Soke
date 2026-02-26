@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .env.local
+.env.shared
 
 # Python
 __pycache__/
@@ -34,6 +35,8 @@ env/
 logs/
 *.log
 *.jsonl
+# Specific for this project's debug logs
+core/ai_support_bot/debug_logs/
 
 # IDE
 .vscode/
@@ -45,28 +48,32 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Bot Token
+# Bot Token & Secrets
 Resource/Bot_Token
+*key*.json
+*secret*.json
+credentials.json
+token.json
 
 # Temporary files
 tmp_*
 temp_*
+nul
 
 # Coverage
 htmlcov/
 .coverage
+.coverage.*
 coverage.xml
 
 # Data & vector store
 data/
+chroma_db/
 chromadb/
+vector_store/
 
 # Service account keys (NEVER commit)
 *service-account*.json
 *sa-key*.json
-.env
-chroma_db/
-__pycache__/
-.venv/
-*.log

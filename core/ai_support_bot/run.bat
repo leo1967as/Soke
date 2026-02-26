@@ -48,7 +48,7 @@ if %ERRORLEVEL% NEQ 0 (
 REM [3/3] Launch
 echo [3/3] Starting bot...
 echo.
-echo Using LLM: openai/gpt-4o-mini
+echo Using LLM: google/gemini-2.5-flash
 echo ----------------------------------------
 
 REM Inject PYTHONPATH to ensure core package is found

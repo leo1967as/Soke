@@ -55,7 +55,7 @@ class TestBotConfig:
 
     def test_defaults(self):
         config = BotConfig(discord_token="test", allowed_channel_ids=[])
-        assert config.llm_model == "openai/gpt-4o-mini"
+        assert config.llm_model == "google/gemini-2.5-flash"
         assert config.llm_provider == "openrouter"
         assert config.cache_ttl_seconds == 3600
         assert config.rate_limit_max_calls == 5

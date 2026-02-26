@@ -13,6 +13,7 @@ from discord.ext import commands
 from core.ai_support_bot.cache.memory_cache import MemoryCache
 from core.ai_support_bot.audit_logging.audit import log_event, log_interaction
 from core.ai_support_bot.security.rate_limiter import RateLimiter
+from core.ai_support_bot.debug_logger import pipeline_logger
 from core.ai_support_bot.security.sanitizer import sanitize_user_input
 
 if TYPE_CHECKING:
@@ -176,21 +177,59 @@ class SokeberSupportBot(commands.Bot):
 
         # Retrieve context chunks
         context_chunks = []
+        logger.info(f"\n{'='*60}")
+        logger.info(f"📩 [STEP 0] ORIGINAL QUESTION: {question}")
+        logger.info(f"{'='*60}")
+        pipeline_logger.start(question)
+        
         if self.context_retriever:
             try:
                 # 1. Expand query (HyDE)
                 expanded_query = await self.llm.generate_hyde_query(question)
+                logger.info(f"\n🔮 [STEP 1] HyDE EXPANSION RESULT:")
+                logger.info(f"   {expanded_query}")
+                pipeline_logger.log_step("STEP 1: HyDE Query Expansion",
+                    original_question=question,
+                    expanded_query=expanded_query)
                 
                 # 2. Retrieve using expanded query (fetch more chunks initially)
                 raw_chunks = await self.context_retriever.retrieve(expanded_query, top_k=10)
+                logger.info(f"\n📚 [STEP 2] RAW CHUNKS RETRIEVED: {len(raw_chunks)}")
+                for i, chunk in enumerate(raw_chunks):
+                    title = chunk.split('\n')[0] if '\n' in chunk else chunk[:60]
+                    logger.info(f"   [{i}] {title}")
+                pipeline_logger.log_step("STEP 2: Parent-Child Hybrid Search",
+                    chunks_retrieved=raw_chunks)
                 
-                # 3. Filter/Re-rank retrieved chunks based on original question
-                context_chunks = await self.llm.filter_context_chunks(question, raw_chunks)
+                # 3. Cross-Encoder Reranking (score each chunk 0-10)
+                context_chunks = await self.llm.rerank_context_chunks(question, raw_chunks, top_n=3)
+                logger.info(f"\n✅ [STEP 3] RERANKED CHUNKS KEPT: {len(context_chunks)}")
+                for i, chunk in enumerate(context_chunks):
+                    title = chunk.split('\n')[0] if '\n' in chunk else chunk[:60]
+                    logger.info(f"   [{i}] {title}")
+                pipeline_logger.log_step("STEP 3: Cross-Encoder Reranking",
+                    chunks_kept=context_chunks)
             except Exception as e:
                 logger.error(f"Context retrieval/filtering failed: {e}")
 
         # Generate via LLM
+        logger.info(f"\n🤖 [STEP 4] SENDING TO SUKUNA LLM ({self.llm._model})")
+        logger.info(f"   Context chunks: {len(context_chunks)}, History msgs: {len(history) if history else 0}")
+        
+        # Log the FULL prompt that gets sent to the LLM
+        full_prompt = self.llm.build_prompt(question, context_chunks)
+        pipeline_logger.log_step("STEP 4: Final Prompt Sent to Sukuna LLM",
+            model=self.llm._model,
+            full_prompt=full_prompt)
+        
         result = await self.llm.generate(question, context_chunks, history)
+        logger.info(f"\n💬 [STEP 5] SUKUNA RESPONSE: {result.text[:100]}...")
+        logger.info(f"{'='*60}\n")
+        
+        pipeline_logger.log_step("STEP 5: Sukuna LLM Response",
+            response_text=result.text,
+            tokens_used=result.tokens_used)
+        pipeline_logger.save()
 
         # Cache the answer
         self.answer_cache.set(question, result.text, ttl=self.config.cache_ttl_seconds)

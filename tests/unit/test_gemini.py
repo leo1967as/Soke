@@ -14,7 +14,7 @@ class TestOpenRouterPromptBuilder:
         # We only test build_prompt which doesn't need a real API key
         # So we mock the initialization
         engine = object.__new__(OpenRouterEngine)
-        engine._model = "openai/gpt-4o-mini"
+        engine._model = "google/gemini-2.5-flash"
         engine._provider = "openrouter"
         return engine
 

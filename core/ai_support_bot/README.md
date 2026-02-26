@@ -32,15 +32,17 @@ cp .env.example .env
 ```
 
 **Required variables:**
+
 | Variable | Description |
 |---|---|
 | `DISCORD_BOT_TOKEN` | Your Discord bot token |
 | `OPENROUTER_API_KEY` | OpenRouter API key (or your LLM provider key) |
 | `ALLOWED_CHANNEL_IDS` | Comma-separated Discord channel IDs |
-| `LLM_MODEL` | Model identifier (e.g., `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet`) |
+| `LLM_MODEL` | Model identifier (e.g., `google/gemini-2.5-flash`, `anthropic/claude-3.5-sonnet`) |
 | `LLM_PROVIDER` | Provider name for logging (e.g., `openrouter`, `cerebras`, `openai`) |
 
 **Optional variables:**
+
 | Variable | Default | Description |
 |---|---|---|
 | `NOTION_TOKEN` | — | Notion integration token |
@@ -119,6 +121,7 @@ core/ai_support_bot/
 ## Roadmap
 
 See `docs/MASTER_PLAN.md` for the full 4-phase development roadmap covering:
+
 - Phase 1: Redis cache + ChromaDB vector store + CI/CD
 - Phase 2: Conversation history + feedback loop + multi-language
 - Phase 3: Task queue + worker pool + Prometheus metrics

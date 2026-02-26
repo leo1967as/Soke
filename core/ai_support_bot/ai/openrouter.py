@@ -39,7 +39,7 @@ class OpenRouterEngine:
 
     Args:
         api_key: OpenRouter or provider API key.
-        model: Model identifier (e.g., "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet").
+        model: Model identifier (e.g., "google/gemini-2.5-flash", "anthropic/claude-3.5-sonnet").
         provider: Provider name for logging (default: "openrouter").
         base_url: Optional custom base URL (default: OpenRouter).
     """
@@ -47,7 +47,7 @@ class OpenRouterEngine:
     def __init__(
         self,
         api_key: str,
-        model: str = "openai/gpt-4o-mini",
+        model: str = "google/gemini-2.5-flash",
         provider: str = "openrouter",
         base_url: str | None = None,
     ):
@@ -102,6 +102,8 @@ class OpenRouterEngine:
             LLMResponse with text and token usage.
         """
         prompt = self.build_prompt(user_question, context_chunks)
+        logger.info(f"[LLM SEND] Model={self._model}, context_chunks={len(context_chunks)}")
+        logger.debug(f"[LLM SEND] Full prompt:\n{prompt[:500]}...")
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         if history:
@@ -123,7 +125,8 @@ class OpenRouterEngine:
                 tokens = response.usage.total_tokens or 0
 
             text = response.choices[0].message.content or "ขออภัย ไม่สามารถสร้างคำตอบได้ในขณะนี้"
-            logger.info(f"{self._provider} response: {len(text)} chars, {tokens} tokens")
+            logger.info(f"[LLM RECV] {self._provider} response: {len(text)} chars, {tokens} tokens")
+            logger.info(f"[LLM RECV] Response text: {text[:150]}")
 
             return LLMResponse(
                 text=text,
@@ -147,58 +150,96 @@ class OpenRouterEngine:
             f"ที่น่าจะมีอยู่ในคู่มือหรือกฎของร้านเกม ROBLOX เพื่อตอบคำถามนี้\n"
             f"ห้ามเขียนตอบโต้ผู้ใช้ ให้เขียนเฉพาะเนื้อหาคู่มือ/กฎ เท่านั้น"
         )
+        logger.info(f"[HyDE SEND] Prompt: {prompt[:100]}...")
         try:
             response = await self._client.chat.completions.create(
-                model="openai/gpt-4o-mini",
+                model="google/gemini-2.5-flash",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=300,
             )
             expanded = response.choices[0].message.content.strip()
-            logger.info(f"HyDE expansion for '{user_question[:20]}': {expanded[:50]}...")
+            logger.info(f"[HyDE RECV] Full expansion: {expanded}")
             return expanded
         except Exception as e:
-            logger.warning(f"HyDE expansion failed: {e}")
+            logger.warning(f"[HyDE FAIL] {e}")
             return user_question
 
-    async def filter_context_chunks(self, user_question: str, chunks: list[str]) -> list[str]:
-        """Filter chunks using LLM to ensure they are at least somewhat relevant to the user's question."""
+    async def rerank_context_chunks(self, user_question: str, chunks: list[str], top_n: int = 3) -> list[str]:
+        """Cross-Encoder Reranker: Score each chunk 0-10 for relevance and keep top N.
+        
+        Unlike the old filter that just picks indices, this scores EVERY chunk
+        against the question like a "referee" and returns only the best ones.
+        """
         if not chunks:
+            logger.info("[RERANK] No chunks to rerank.")
             return []
-            
-        chunks_text = ""
-        for i, chunk in enumerate(chunks):
-            chunks_text += f"--- Chunk {i} ---\n{chunk}\n\n"
-            
+        
+        # Cap input to prevent GPT from truncating its scores
+        MAX_RERANK = 7
+        rerank_chunks = chunks[:MAX_RERANK]
+        
+        # Build scoring prompt — use FULL content, not truncated previews
+        chunks_block = ""
+        for i, chunk in enumerate(rerank_chunks):
+            chunks_block += f"--- Chunk {i} ---\n{chunk}\n\n"
+        
+        n = len(rerank_chunks)
         prompt = (
             f"คำถามผู้ใช้: {user_question}\n\n"
-            f"ข้อมูลอ้างอิง:\n{chunks_text}\n"
-            f"จงบอกว่า Chunk ไหนที่มีแนวโน้ม 'เกี่ยวข้อง' หรือ 'มีเบาะแส' ที่จะนำไปใช้ตอบคำถามผู้ใช้ได้ (แม้เพียงบางส่วนก็ให้ถือว่าเกี่ยว) "
-            f"ตอบเป็นตัวเลข Index คั่นด้วยลูกน้ำ (เช่น 0, 2, 3) หากมั่นใจว่าไม่มี Chunk ไหนเกี่ยวเลยจริงๆ ให้ตอบคำว่า NONE "
-            f"ตอบแค่ตัวเลขหรือ NONE เท่านั้น ห้ามมีข้อความอื่น"
+            f"ข้อมูลอ้างอิง ({n} chunks):\n{chunks_block}\n"
+            f"ให้คะแนนทั้ง {n} Chunks ว่าเกี่ยวข้องกับคำถามมากน้อยเพียงใด (0 = ไม่เกี่ยวเลย, 10 = ตอบตรงคำถาม)\n"
+            f"ต้องให้คะแนนครบทุก Chunk ตั้งแต่ 0 ถึง {n-1}\n"
+            f"ตอบในรูปแบบ: 0:คะแนน, 1:คะแนน, ... , {n-1}:คะแนน\n"
+            f"ตอบแค่คะแนนเท่านั้น ห้ามมีข้อความอื่น"
         )
+        logger.info(f"[RERANK SEND] Question='{user_question}', Chunks={n}")
         
         try:
             response = await self._client.chat.completions.create(
-                model="openai/gpt-4o-mini",
+                model="google/gemini-2.5-flash",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
             result = response.choices[0].message.content.strip()
+            logger.info(f"[RERANK RECV] Scores: '{result}'")
             
-            # If the LLM says NONE or we can't parse it, fallback to the top 2 chunks 
-            # instead of returning [] to avoid the bot completely blanking out.
-            if result.upper() == "NONE":
-                logger.warning("Context filter said NONE. Falling back to top 2 chunks just in case.")
-                return chunks[:2]
-                
-            indices = [int(x.strip()) for x in result.split(",") if x.strip().isdigit()]
-            if not indices:
-                 return chunks[:2]
-                 
-            filtered = [chunks[i] for i in indices if 0 <= i < len(chunks)]
-            logger.info(f"Context filter: kept {len(filtered)}/{len(chunks)} chunks.")
-            return filtered
+            # Parse "0:8, 1:2, 2:9" format
+            scores: dict[int, int] = {}
+            for pair in result.split(","):
+                pair = pair.strip()
+                if ":" in pair:
+                    parts = pair.split(":")
+                    try:
+                        idx = int(parts[0].strip())
+                        score = int(parts[1].strip())
+                        if 0 <= idx < len(rerank_chunks):
+                            scores[idx] = score
+                    except (ValueError, IndexError):
+                        continue
+            
+            if not scores:
+                logger.warning(f"[RERANK] Failed to parse scores. Keeping top {top_n} chunks as-is.")
+                return rerank_chunks[:top_n]
+            
+            # Sort by score descending, keep top N with score > 2
+            ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            kept = []
+            for idx, score in ranked:
+                if score >= 2 and len(kept) < top_n:
+                    kept.append(rerank_chunks[idx])
+                    title = rerank_chunks[idx].split('\n')[0] if '\n' in rerank_chunks[idx] else rerank_chunks[idx][:40]
+                    logger.info(f"  [RERANK] ✓ Chunk {idx} (score: {score}/10) → {title}")
+            
+            if not kept:
+                logger.warning("[RERANK] All scores < 2. Keeping best 2 chunks anyway.")
+                for idx, score in ranked[:2]:
+                    kept.append(rerank_chunks[idx])
+                    
+            logger.info(f"[RERANK] Final: {len(kept)}/{n} chunks kept.")
+            return kept
+            
         except Exception as e:
-            logger.warning(f"Context filter failed: {e}. Falling back to all chunks.")
-            return chunks
+            logger.warning(f"[RERANK FAIL] {e}. Keeping top {top_n} chunks as-is.")
+            return rerank_chunks[:top_n]
+

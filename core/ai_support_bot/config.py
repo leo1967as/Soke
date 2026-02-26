@@ -20,7 +20,7 @@ class BotConfig:
 
     # OpenRouter / LLM Provider
     openrouter_api_key: str = ""
-    llm_model: str = "openai/gpt-4o-mini"
+    llm_model: str = "google/gemini-2.5-flash"
     llm_provider: str = "openrouter"  # openrouter, openai, anthropic, etc.
     embedding_model: str = "openai/text-embedding-3-small"
 
@@ -81,7 +81,7 @@ def load_config(env_path: str | Path | None = None) -> BotConfig:
         allowed_channel_ids=_parse_channel_ids(os.getenv("ALLOWED_CHANNEL_IDS")),
         guild_id=int(gid) if (gid := os.getenv("BOT_GUILD_ID")) else None,
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
-        llm_model=os.getenv("LLM_MODEL", "openai/gpt-4o-mini"),
+        llm_model=os.getenv("LLM_MODEL", "google/gemini-2.5-flash"),
         llm_provider=os.getenv("LLM_PROVIDER", "openrouter"),
         embedding_model=os.getenv("EMBEDDING_MODEL", "openai/text-embedding-3-small"),
         notion_token=os.getenv("NOTION_TOKEN", ""),
