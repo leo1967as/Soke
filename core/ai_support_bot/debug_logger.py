@@ -52,7 +52,7 @@ class PipelineDebugLogger:
         lines.append("")
 
         for entry in self._steps:
-            step = entry.pop("step")
+            step = entry.get("step", "unknown")
             lines.append(f"{'─' * 50}")
             lines.append(f"📌 {step}")
             lines.append(f"{'─' * 50}")

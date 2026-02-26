@@ -144,9 +144,9 @@ class SheetsFetcher:
         
         return rows
 
-    def fetch_all_rows(self, sheet_names: list[str]) -> list[SheetRow]:
+    def fetch_all_rows(self, spreadsheet_id: str, sheet_names: list[str]) -> list[SheetRow]:
         """Fetch rows from multiple sheets."""
         all_rows: list[SheetRow] = []
         for name in sheet_names:
-            all_rows.extend(self.fetch_sheet(name))
+            all_rows.extend(self.fetch_sheet_rows(spreadsheet_id, name))
         return all_rows

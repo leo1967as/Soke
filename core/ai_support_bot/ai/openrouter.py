@@ -153,7 +153,7 @@ class OpenRouterEngine:
         logger.info(f"[HyDE SEND] Prompt: {prompt[:100]}...")
         try:
             response = await self._client.chat.completions.create(
-                model="google/gemini-2.5-flash",
+                model=self._model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=300,
@@ -197,7 +197,7 @@ class OpenRouterEngine:
         
         try:
             response = await self._client.chat.completions.create(
-                model="google/gemini-2.5-flash",
+                model=self._model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )

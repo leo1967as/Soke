@@ -121,7 +121,8 @@ class SokeberSupportBot(commands.Bot):
         # Rate limiting
         if not is_admin and not self.rate_limiter.is_allowed(user_id):
             wait_time = int(self.rate_limiter.time_until_reset(user_id) / 60) + 1
-            cooldown_msg = f"⏳ โควต้าคำถามของนายหมดแล้ว (20 ครั้ง/ชม.) รออีกประมาณ {wait_time} นาทีแล้วค่อยมาถามผมใหม่"
+            window_min = self.config.rate_limit_window_seconds // 60
+            cooldown_msg = f"⏳ โควต้าคำถามของนายหมดแล้ว ({self.config.rate_limit_max_calls} ครั้ง/{window_min} นาที) รออีกประมาณ {wait_time} นาทีแล้วค่อยมาถามผมใหม่"
             await message.reply(cooldown_msg, mention_author=False)
             return
 
@@ -184,9 +185,20 @@ class SokeberSupportBot(commands.Bot):
         
         if self.context_retriever:
             try:
-                # 1. Expand query (HyDE)
-                expanded_query = await self.llm.generate_hyde_query(question)
-                logger.info(f"\n🔮 [STEP 1] HyDE EXPANSION RESULT:")
+                # 1. Expand query (HyDE) — only for short/vague questions
+                hyde_cache_key = f"__hyde__{question}"
+                if len(question) < 30:
+                    cached_hyde = self.answer_cache.get(hyde_cache_key)
+                    if cached_hyde:
+                        expanded_query = cached_hyde
+                        logger.info(f"\n🔮 [STEP 1] HyDE CACHE HIT")
+                    else:
+                        expanded_query = await self.llm.generate_hyde_query(question)
+                        self.answer_cache.set(hyde_cache_key, expanded_query, ttl=self.config.cache_ttl_seconds)
+                        logger.info(f"\n🔮 [STEP 1] HyDE EXPANSION RESULT:")
+                else:
+                    expanded_query = question
+                    logger.info(f"\n🔮 [STEP 1] HyDE SKIPPED (query >= 30 chars, using as-is)")
                 logger.info(f"   {expanded_query}")
                 pipeline_logger.log_step("STEP 1: HyDE Query Expansion",
                     original_question=question,

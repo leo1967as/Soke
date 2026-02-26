@@ -51,7 +51,7 @@ class RateLimiter:
             return 0.0
             
         # The oldest active call dictates when the next slot opens up
-        oldest_call = active[0]
+        oldest_call = min(active)
         return max(0.0, self.window - (now - oldest_call))
 
     def reset(self, user_id: int) -> None:

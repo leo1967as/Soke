@@ -116,6 +116,7 @@ def main():
         context_retriever=context_retriever,
     )
     bot.ingestion_task = ingestion_task
+    ingestion_task.context_retriever = context_retriever
 
     # Register admin commands
     admin_cmds = AdminCommands(bot)
@@ -136,7 +137,7 @@ def main():
 
     def signal_handler(sig, frame):
         logger.info(f"Received signal {sig}, shutting down...")
-        asyncio.get_event_loop().create_task(shutdown())
+        bot.loop.create_task(shutdown())
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

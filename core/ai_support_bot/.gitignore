@@ -1,0 +1,56 @@
+# ── Secrets ──────────────────────────────────────────────────────────
+.env
+*.pem
+*.key
+service-account*.json
+
+# ── Python ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual Environments ─────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── ChromaDB / Vector Store (runtime data, not source) ───────────────
+chroma_db/
+*.sqlite3
+*.parquet
+
+# ── Logs & Debug Output ───────────────────────────────────────────────
+logs/
+debug_logs/
+*.log
+*.jsonl
+
+# ── Backups / Old Files ───────────────────────────────────────────────
+*.bak
+*.old
+*.orig
+search_output.txt
+
+# ── IDE ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Ruff / mypy cache ────────────────────────────────────────────────
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# ── uv lock (optional: commit if you want reproducible installs) ──────
+# uv.lock

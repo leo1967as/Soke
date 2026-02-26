@@ -26,12 +26,12 @@ class BotConfig:
 
     # Notion
     notion_token: str = ""
-    notion_page_ids: list[str] = None  # Comma-separated page IDs in env
-    notion_database_ids: list[str] = None  # Comma-separated database IDs in env
+    notion_page_ids: list[str] | None = None  # Comma-separated page IDs in env
+    notion_database_ids: list[str] | None = None  # Comma-separated database IDs in env
 
     # Google Sheets (base64-encoded service account JSON)
     google_sa_base64: str = ""
-    sheets_spreadsheet_ids: list[str] = None  # Comma-separated in env
+    sheets_spreadsheet_ids: list[str] | None = None  # Comma-separated in env
 
     # Cache
     cache_ttl_seconds: int = 3600

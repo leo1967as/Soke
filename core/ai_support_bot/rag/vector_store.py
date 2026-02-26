@@ -68,8 +68,11 @@ class VectorStore:
         logger.info(f"Reset VectorStore collection '{self.collection_name}'")
 
     def add_parent_document(self, parent_id: str, full_text: str):
-        """Store a full parent document for later retrieval."""
+        """Store a full parent document in memory (call save_parent_docs() after batch)."""
         self.parent_docs[parent_id] = full_text
+
+    def save_parent_docs(self):
+        """Persist all parent documents to disk. Call once after a batch of add_parent_document()."""
         self._save_parent_docs()
 
     def add_documents(self, texts: list[str], embeddings: list[list[float]], metadatas: list[dict]):

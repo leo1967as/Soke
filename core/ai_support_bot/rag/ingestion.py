@@ -12,6 +12,12 @@ if TYPE_CHECKING:
     from core.ai_support_bot.ai.embedding import EmbeddingEngine
     from core.ai_support_bot.rag.vector_store import VectorStore
 
+try:
+    from rank_bm25 import BM25Okapi  # noqa: F401
+    HAS_BM25 = True
+except ImportError:
+    HAS_BM25 = False
+
 logger = logging.getLogger("ai_support_bot.rag.ingestion")
 
 # Sheets that are useful for customer support knowledge
@@ -52,6 +58,7 @@ class DataIngestionTask:
         self.vector_store = vector_store
         self.notion_fetcher = notion_fetcher
         self.sheets_fetcher = sheets_fetcher
+        self.context_retriever = None  # Set by caller after construction to trigger BM25 rebuild
         self.interval_seconds = interval_seconds
         self.notion_page_ids = notion_page_ids or []
         self.notion_database_ids = notion_database_ids or []
@@ -183,6 +190,9 @@ class DataIngestionTask:
                         "parent_id": parent_id,
                     })
             
+            # Persist all parent docs to disk once (not per-document)
+            await asyncio.to_thread(self.vector_store.save_parent_docs)
+
             # Embed and index all children
             batch_size = 50
             for i in range(0, len(child_texts), batch_size):
@@ -203,6 +213,10 @@ class DataIngestionTask:
             logger.info(
                 f"✅ Rebuilt index: {len(texts)} parents → {len(child_texts)} child chunks"
             )
+            # Rebuild BM25 index so keyword search uses fresh data
+            if self.context_retriever is not None and HAS_BM25:
+                await asyncio.to_thread(self.context_retriever._rebuild_bm25_index)
+                logger.info("BM25 index rebuilt after ingestion.")
         except Exception as e:
             logger.error(f"Failed to rebuild vector index: {e}")
 

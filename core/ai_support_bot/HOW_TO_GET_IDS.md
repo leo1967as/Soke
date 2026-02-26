@@ -55,7 +55,7 @@ Spreadsheet ID: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
 
 ```env
 # ── Notion ───────────────────────────────────
-NOTION_TOKEN=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
+NOTION_TOKEN=secret_your_notion_token_here
 NOTION_DATABASE_IDS=1a2b3c4d5e6f7g8h9i0j1k2l
 
 # ── Google Sheets ────────────────────────────
