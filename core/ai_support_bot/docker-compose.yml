@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  bot:
+    build:
+      context: ../../
+      dockerfile: core/ai_support_bot/Dockerfile
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - bot-net
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
+    networks:
+      - bot-net
+
+networks:
+  bot-net:
+    driver: bridge

@@ -1,0 +1,24 @@
+
+Usage: notion-mcp-server [options]
+
+Options:
+  --transport <type>     Transport type: 'stdio' or 'http' (default: stdio)
+  --port <number>        Port for HTTP server when using Streamable HTTP transport (default: 3000)
+  --auth-token <token>   Bearer token for HTTP transport authentication (optional)
+  --disable-auth         Disable bearer token authentication for HTTP transport
+  --help, -h             Show this help message
+
+Environment Variables:
+  NOTION_TOKEN           Notion integration token (recommended)
+  OPENAPI_MCP_HEADERS    JSON string with Notion API headers (alternative)
+  AUTH_TOKEN             Bearer token for HTTP transport authentication (alternative to --auth-token)
+
+Examples:
+  notion-mcp-server                                    # Use stdio transport (default)
+  notion-mcp-server --transport stdio                  # Use stdio transport explicitly
+  notion-mcp-server --transport http                   # Use Streamable HTTP transport on port 3000
+  notion-mcp-server --transport http --port 8080       # Use Streamable HTTP transport on port 8080
+  notion-mcp-server --transport http --auth-token mytoken # Use Streamable HTTP transport with custom auth token
+  notion-mcp-server --transport http --disable-auth    # Use Streamable HTTP transport without authentication
+  AUTH_TOKEN=mytoken notion-mcp-server --transport http # Use Streamable HTTP transport with auth token from env var
+
